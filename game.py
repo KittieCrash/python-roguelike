@@ -14,13 +14,21 @@ MAX_ROOMS = 30
 MAP_WIDTH = 80
 MAP_HEIGHT = 45
 
+FOV_ALGO = 0
+FOV_LIGHT_WALLS = True
+TORCH_RADIUS = 10
+
 color_dark_wall = libtcod.Color(20, 20, 20)
+color_light_wall = libtcod.Color(130,110, 50)
 color_dark_ground = libtcod.Color(50,50,150)
+color_light_ground = libtcod.Color(200,180,50)
+
 
 class Tile:
 	#A tile of the map and its properties
 	def __init__(self,blocked,block_sight = None):
 		self.blocked = blocked;
+		self.explored = False
 
 		if block_sight is None: block_sight = blocked
 		self.block_sight = block_sight
@@ -113,6 +121,8 @@ def make_map():
 			create_room(new_room)
 
 			(new_x, new_y) = new_room.center()
+			#room_no = Object(new_x, new_y, chr(65+num_rooms), libtcod.white)
+			#objects.insert(0, room_no)
 
 			if num_rooms == 0:
 				player.x = new_x
@@ -140,17 +150,31 @@ def make_map():
 
 
 def render_all():
-	global color_light_wall
-	global color_light_ground
+	global color_light_wall, color_dark_wall
+	global color_light_ground, color_dark_ground
+	global fov_map, fov_recompute
 
-	#go through all tiles, set their background color
-	for y in range(MAP_HEIGHT):
-		for x in range(MAP_WIDTH):
-			wall = map[x][y].block_sight
-			if wall:
-				libtcod.console_set_char_background(con, x, y, color_dark_wall, libtcod.BKGND_SET)
-			else:
-				libtcod.console_set_char_background(con, x, y, color_dark_ground, libtcod.BKGND_SET)
+	if fov_recompute:
+		fov_recompute = False
+		libtcod.map_compute_fov(fov_map, player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO)
+		#go through all tiles, set their background color
+		for y in range(MAP_HEIGHT):
+			for x in range(MAP_WIDTH):
+				visible = libtcod.map_is_in_fov(fov_map, x, y)
+				wall = map[x][y].block_sight
+				if not visible:
+					if map[x][y].explored:
+						if wall:
+							libtcod.console_set_char_background(con, x, y, color_dark_wall, libtcod.BKGND_SET)
+						else:
+							libtcod.console_set_char_background(con, x, y, color_dark_ground, libtcod.BKGND_SET)
+				else:
+					if wall:
+						libtcod.console_set_char_background(con, x, y, color_light_wall, libtcod.BKGND_SET)
+					else:
+						libtcod.console_set_char_background(con, x, y, color_light_ground, libtcod.BKGND_SET)
+					map[x][y].explored = True
+				
 
 		for object in objects:
 			object.draw()
@@ -159,6 +183,7 @@ def render_all():
 
 def handle_keys():
 	global playerx, playery
+	global fov_recompute
 
 	key = libtcod.console_check_for_keypress(True)
 	if key.vk == libtcod.KEY_ENTER and key.lalt:
@@ -167,6 +192,7 @@ def handle_keys():
 		return True;
 	#movement keys
 	elif key.vk == libtcod.KEY_CHAR:
+		fov_recompute = True
 		if key.c == ord('w'):
 			player.move(0, -1)
 		elif key.c == ord('s'):
@@ -181,7 +207,7 @@ def handle_keys():
 ###########################################################
 
 libtcod.console_set_custom_font('arial10x10.png', libtcod.FONT_TYPE_GREYSCALE | libtcod.FONT_LAYOUT_TCOD)
-libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'python/Roguelike-like', False)
+libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'Super Synergy Turbo', False)
 con = libtcod.console_new(SCREEN_WIDTH, SCREEN_HEIGHT)
 
 #create object representing the player
@@ -193,7 +219,11 @@ player = Object(SCREEN_WIDTH/2, SCREEN_HEIGHT/2, '@', libtcod.white)
 objects = [player]
 make_map()
 
-
+fov_map = libtcod.map_new(MAP_WIDTH, MAP_HEIGHT)
+for y in range(MAP_HEIGHT):
+	for x in range(MAP_WIDTH):
+		libtcod.map_set_properties(fov_map, x, y, not map[x][y].block_sight, not map[x][y].blocked)
+fov_recompute = True
 
 while not libtcod.console_is_window_closed():
 	
